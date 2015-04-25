@@ -56,18 +56,39 @@ String sensorStatus = "01-UNSTABLE_GREEN"; /*01-UNSTABLE_GREEN, 02-STABLE_GREEN,
 
 
 void setup() {
+  
+  
     Serial.begin (9600);
+    
+ 
+    
+    sendDataToPVCloud("SKETCH_FLOW", "LASER BEAM SENSOR STARTED");
     if(debugMode==1) Serial.println("Initiating Sketch...");
     if(debugMode==1) Serial.println("Setting Pin Modes...");
     setPinModes();
     
     if(debugMode==1) Serial.println("Init Signal...");
     initSignal();
+
+    if(debugMode==1) Serial.println("Getting PIN13 Value from PVCLOUD");    
     
+    String pin13Command = getPin13CommandFromPVCloud();
+    if(pin13Command == "HIGH"){
+      digitalWrite(blinkPin, HIGH);
+    } else if (pin13Command == "LOW") {
+      digitalWrite(blinkPin, LOW);
+    }  
+  
+    if(debugMode==1) Serial.println("PIN13 Value retrieval complete");      
+    
+    String thisIsGood = readFileValue();
+    Serial.println("THE STRING IS: ");
+    Serial.println(thisIsGood);  
     if(debugMode==1) Serial.println("Setup Complete!");
 }
 
-void loop() {    
+void loop() {  
+return;  
     if(firstLoop == 1 && debugMode==1) Serial.print("Beginning Loop...");
     if(debugMode==1) Serial.println(micros());
     
@@ -185,10 +206,14 @@ void setPinModes(){
    digitalWrite(alarmSoundPin,LOW);       
 }
 
+String previousAlarmMode = "";
 void setAlarmMode(){
  
    if(currentSensorStatus ==  STATUS_ABSENT_BEAM && currentSensorStatus_b == STATUS_ABSENT_BEAM){
+       
        Serial.println("Alarm Condition Detected!");
+       sendAlarmStatusChangeToPVCloud("ALARM");
+       
        long alarmStopMillis = millis()+alarmMinTime/2;
        do{
          Serial.print("Current Millis:");
@@ -205,12 +230,17 @@ void setAlarmMode(){
        
        
    } else if((currentSensorStatus ==  STATUS_UNSTABLE_BEAM || currentSensorStatus ==  STATUS_ABSENT_BEAM) && (currentSensorStatus_b ==  STATUS_UNSTABLE_BEAM || currentSensorStatus_b ==  STATUS_ABSENT_BEAM) ){
+      
+       sendAlarmStatusChangeToPVCloud("WARNING");  
+       
        digitalWrite(alarmLightPin,HIGH);
        digitalWrite(alarmSoundPin,HIGH);
        delay(50);
        digitalWrite(alarmSoundPin,LOW);
        
    } else {
+
+       sendAlarmStatusChangeToPVCloud("STABLE"); 
        digitalWrite(alarmLightPin,LOW);
        digitalWrite(alarmSoundPin,LOW);     
    }
@@ -369,8 +399,40 @@ void setRedLight_b_ON(){
 void setRedLight_b_OFF(){
     digitalWrite(redPin_b, LOW);  
 }
+
+
 boolean isLaserDurationWithinSpec(long duration){
   return duration > laserDurationSpec_min &&  duration < laserDurationSpec_max;
 }
 
+
+void sendDataToPVCloud(String label, String value){
+  String pvcloudCommand = "node /home/root/pvcloud_api.js action='add_value' value='" + value + "' value_type='JSON_TH' value_label='" + label + "' captured_datetime='2015-03-09+21:00' >> pvcloud_log.txt &";
+  system ( pvcloudCommand.buffer );
+}
+
+void sendAlarmStatusChangeToPVCloud(String newAlarmStatus){
+     if(previousAlarmMode!=newAlarmStatus){
+       previousAlarmMode = newAlarmStatus;
+       sendDataToPVCloud("LSM ALARM MODE:",newAlarmStatus);
+     }  
+}
+
+String getPin13CommandFromPVCloud(){
+  String pvcloudCommand = "node /home/root/pvcloud_api.js action='get_last_value_simple' value_label='PIN_13_STATUS' captured_datetime='2015-03-09+21:00' > pvcloud_pin13_command.txt";
+  system ( pvcloudCommand.buffer );  
+  Serial.println("PIN 13 COMMAND READ!");
+  return "DONE";
+}
+
+
+String readFileValue(){
+  FILE *filePointer;
+  filePointer = fopen("/pvcloud_pin13_command.txt","r");
+  char fileContent[100];
+  fgets (fileContent , 400 , filePointer);
+  Serial.println(fileContent);
+  
+  return fileContent;
+}
 
