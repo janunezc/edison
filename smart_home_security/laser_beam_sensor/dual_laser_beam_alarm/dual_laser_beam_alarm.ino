@@ -421,8 +421,9 @@ void sendAlarmStatusChangeToPVCloud(String newAlarmStatus){
 String getPin13CommandFromPVCloud(){
   String pvcloudCommand = "node /home/root/pvcloud_api.js action='get_last_value_simple' value_label='PIN_13_STATUS' captured_datetime='2015-03-09+21:00' > pvcloud_pin13_command.txt";
   system ( pvcloudCommand.buffer );  
+  String result = readFileValue();
   Serial.println("PIN 13 COMMAND READ!");
-  return "DONE";
+  return result;
 }
 
 
