@@ -9,13 +9,18 @@
 #define redPin_b   6
 #define greenPin_b 7
 
+#define ultrasonic_trigger 8
+#define ultrasonic_echo 9
 
-#define laserPin_c 8
-#define greenPin_c 9
-#define redPin_c   10
+#define free_pin01 = 10
 
 #define alarmLightPin 11
 #define alarmSoundPin 12
+
+#define lightSensorPin 0
+#define tempSensor 1
+#define avoidanceSensor 2
+#define avoidanceSensor2 3
 
 #define blinkPin 13
 
@@ -82,6 +87,25 @@ void setup() {
 }
 
 void loop() {  
+  
+    long distanceInCM = getDistance();
+    Serial.print("Distance in LOOP:");
+    Serial.print(distanceInCM);
+    Serial.println("cm");
+    
+    int lightSensorReading = readLightSensor();
+    Serial.print("Light measured in LOOP: ");
+    Serial.println(lightSensorReading);
+
+    long tempSensorReading = readTemperatureSensor() ;
+    Serial.print("Temperarure measured in LOOP: ");
+    Serial.println(tempSensorReading);
+
+    readAvoidSensor();
+    readAvoidSensor2();
+
+    delay(2000);    
+    return;
 
     if(firstLoop == 1 && debugMode==1) Serial.print("Beginning Loop...");
     if(debugMode==1) Serial.println(micros());
@@ -196,6 +220,9 @@ void setPinModes(){
     pinMode(alarmLightPin, OUTPUT);    
     pinMode(alarmSoundPin, OUTPUT);    
     
+    pinMode(ultrasonic_trigger, OUTPUT);
+    pinMode(ultrasonic_echo, INPUT);
+    
    digitalWrite(alarmLightPin,LOW);
    digitalWrite(alarmSoundPin,LOW);       
 }
@@ -263,6 +290,29 @@ void initSignal(){
 }
 
 
+long getDistance(){
+  
+    long pulseDuration;
+    long distanceInCM = -1;
+    
+    //TRIGGER:
+    digitalWrite(ultrasonic_trigger, LOW);
+    delayMicroseconds(2);
+    digitalWrite(ultrasonic_trigger, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(ultrasonic_trigger, LOW);
+    
+    pulseDuration = pulseIn(ultrasonic_echo, HIGH);
+    
+    distanceInCM = (pulseDuration/2)/29.1;
+    
+    Serial.print("Distance Measured: ");
+    Serial.print(distanceInCM);
+    Serial.println("cm. ");
+    return distanceInCM;
+  
+  return distanceInCM;
+}
 
 
 
@@ -431,3 +481,38 @@ String readFileValue(){
   return fileContent;
 }
 
+int readLightSensor(){
+   int result = analogRead( lightSensorPin );
+   Serial.print ("Light Sensor: ");
+   Serial.println(result);
+   return result;
+}
+
+double readTemperatureSensor(){
+   int result = analogRead( tempSensor );
+   Serial.print ("Temp Sensor: ");
+   Serial.println(result);
+   return Thermistor(1024-result);
+    
+}
+double Thermistor (int RawADC) {
+  double Temp;
+  Temp = log (((10240000/RawADC) - 10000));
+  Temp = 1 / (0.001129148 + (0.000234125 + (0.0000000876741 * Temp * Temp)) * Temp);
+  Temp = Temp - 273.15; // Convert Kelvin to Celcius
+  return Temp;
+}
+
+double readAvoidSensor(){
+   int result = analogRead( avoidanceSensor );
+   Serial.print ("AVOID  Sensor: ");
+   Serial.println(result);
+   return result;  
+}
+
+double readAvoidSensor2(){
+   int result = analogRead( avoidanceSensor2 );
+   Serial.print ("AVOID  Sensor 2: ");
+   Serial.println(result);
+   return result;  
+}
