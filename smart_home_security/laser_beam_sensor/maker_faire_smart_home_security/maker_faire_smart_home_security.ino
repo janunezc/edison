@@ -1,49 +1,48 @@
-#define rxPin     0
-#define txPin     1
+// DIGITAL PINS
+#define pin_rx              0
+#define pin_tx              1
 
-#define laserPin  2
-#define redPin    3
-#define greenPin  4
+#define pin_laser_01        2
+#define pin_laser_01_red    3
+#define pin_laser_01_green  4
 
-#define laserPin_b 5
-#define redPin_b   6
-#define greenPin_b 7
+#define pin_laser_02        5
+#define pin_laser_02_red    6
+#define pin_laser_02_green  7
 
-#define ultrasonic_trigger 8
-#define ultrasonic_echo 9
+#define pin_usonic_trigger  8
+#define pin_usonic_echo     9
 
-#define free_pin01 = 10
+#define pin_alarm_light    11
+#define pin_alarm_buzzer   12
 
-#define alarmLightPin 11
-#define alarmSoundPin 12
+#define pin_blink 13
 
-#define lightSensorPin 0
-#define tempSensor 1
-#define avoidanceSensor 2
-#define avoidanceSensor2 3
+//ANALOG PINS
+#define pin_photocell       0
+#define pin_temperature     1
+#define pin_absence         2
+#define pin_presence        3
 
-#define blinkPin 13
+#define LASER_BEAM_STEADY   0
+#define LASER_BEAM_UNSTABLE 1
+#define LASER_BEAM_ABSENT   2
 
-int debugMode = 1;
+#define ALARM_STATUS_CLEAR   0
+#define ALARM_STATUS_WARNING 1
+#define ALARM_STATUS_PANIC   2
+
+#define alarmDurationMillis 2000
+
+boolean  debugMode          = false; /*Use true for DEBUG MODE ACTIVE, and false for DEBUG MODE INACTIVE*/
 
 long previousLaserDuration = 0;
-int firstLoop = 1;
+
 long lastGreenMillisStamp = 0;
 int photoCellInput = 0;
 int previousPhotoCellInput = 0;
 int photoCellDiff = 0;
 
-int STATUS_STEADY_BEAM = 0; /*Beam detected steadily for 1 second or more*/
-int STATUS_UNSTABLE_BEAM = 1; /*Beam detected for less than one second*/
-int STATUS_ABSENT_BEAM = 2; /*Beam not detected for 1 second or more*/
-int currentSensorStatus = 0;
-int currentSensorStatus_b = 0;
-
-long steadyBeamInitMillis = 0;
-long absentBeamInitMillis = 0;
-
-long steadyBeamInitMillis_b = 0;
-long absentBeamInitMillis_b = 0;
 
 long readings_Count = 0;
 long readingsInSpec_Count = 0;
@@ -61,257 +60,301 @@ String sensorStatus = "01-UNSTABLE_GREEN"; /*01-UNSTABLE_GREEN, 02-STABLE_GREEN,
 
 
 void setup() {
-  
-  
+    delay(2000);
     Serial.begin (9600);
+    Serial.println("SETTING SKETCH UP...");
+    Serial.println("Sending START data to pvCloud...");
+    sendDataToPVCloud("SKETCH_FLOW", "HOME SECURITY SKETCH STARTED", false);
     
- 
-    
-    sendDataToPVCloud("SKETCH_FLOW", "LASER BEAM SENSOR STARTED");
-    if(debugMode==1) Serial.println("Initiating Sketch...");
-    if(debugMode==1) Serial.println("Setting Pin Modes...");
+    if(debugMode) Serial.println("Setting Pin Modes...");
     setPinModes();
     
-    if(debugMode==1) Serial.println("Init Signal...");
+    if(debugMode) Serial.println("Init Signal...");
     initSignal();
-
-    if(debugMode==1) Serial.println("Getting PIN13 Value from PVCLOUD");    
-    
-  
-    if(debugMode==1) Serial.println("PIN13 Value retrieval complete");      
-    
-    String thisIsGood = readFileValue();
-    Serial.println("THE STRING IS: ");
-    Serial.println(thisIsGood);  
-    if(debugMode==1) Serial.println("Setup Complete!");
+   
+    if(debugMode) Serial.println("Setup Complete!");
 }
 
-void loop() {  
+boolean isFirstLoop = true;
+int alarmStatus_PREV = -1;
+void loop(){
+  if(isFirstLoop) Serial.println("INITIAL LOOP BEGIN");
+   
+  readSensors(false); 
   
-    long distanceInCM = getDistance();
-    Serial.print("Distance in LOOP:");
-    Serial.print(distanceInCM);
-    Serial.println("cm");
-    
-    int lightSensorReading = readLightSensor();
-    Serial.print("Light measured in LOOP: ");
-    Serial.println(lightSensorReading);
+  
+  int alarmStatus = Alarm_DetermineStatus();
+   
+  if (alarmStatus != alarmStatus_PREV && alarmStatus_PREV!=-1){
+    Serial.println("ALARM STATUS CHANGED!");
+    alarmStatus_PREV = alarmStatus;
+    switch(alarmStatus){
+      case ALARM_STATUS_CLEAR:
+        Serial.println("ALARM STATUS: CLEAR");
+        sendDataToPVCloud("HOUSE_STATUS","{\"per_status\":\"S\",\"front_door_status\":\"H\",\"z1_status\":\"H\",\"z2_status\":\"H\",\"z3_status\":\"H\",\"temp_status\":\"H\",\"light_status\":\"H\",\"house_status\":\"C\"}", false);
+        break;
+      case ALARM_STATUS_WARNING:
+        Serial.println("ALARM STATUS: WARNING!");
+        break;
+      case ALARM_STATUS_PANIC:
+        Serial.println("ALARM STATUS: PANIC!!!!!");
+        sendDataToPVCloud("HOUSE_STATUS","{\"per_status\":\"A\",\"front_door_status\":\"H\",\"z1_status\":\"H\",\"z2_status\":\"H\",\"z3_status\":\"H\",\"temp_status\":\"H\",\"light_status\":\"H\",\"house_status\":\"U\"}", false);
+        break;
+    }  
+  } else if ( alarmStatus_PREV == -1 ) {
+    alarmStatus_PREV = alarmStatus;
+  }
+  
+  Alarm_ExecuteStatus(alarmStatus);  
+  
+  
 
-    long tempSensorReading = readTemperatureSensor() ;
-    Serial.print("Temperarure measured in LOOP: ");
-    Serial.println(tempSensorReading);
-
-    readAvoidSensor();
-    readAvoidSensor2();
-
-    delay(2000);    
-    return;
-
-    if(firstLoop == 1 && debugMode==1) Serial.print("Beginning Loop...");
-    if(debugMode==1) Serial.println(micros());
-    
-    determineSensorStatus(); setSensorStatusPins();
-    
-    determineSensorStatus_b(); setSensorStatusPins_b();    
-    
-    setAlarmMode();
-      
-    if(firstLoop == 1 && debugMode == 1) {
-      Serial.println("First Loop Complete!");
-      firstLoop = 0;
-    }    
+  
+ 
+  
+  if(isFirstLoop){
+    Serial.println("INITIAL LOOP END");
+    isFirstLoop = false;
+  }  
 }
 
-int determineSensorStatus(){
-    long laserDuration;
-    
-    laserDuration = getLaserDurationFiveInARow();    
-    if(debugMode==1) Serial.print("Laser Duration: ");
-    if(debugMode==1) Serial.println(laserDuration);
-    
+
+
+void initSignal(){
+    if(debugMode) {Serial.println("Init Signal Begins...");}
+    for (int i=1; i<=20; i++){
+        if(debugMode) {Serial.print("Init Signal Count: ");}
+        if(debugMode) {Serial.println(i);}
+        
+        digitalWrite(pin_blink, HIGH);  
+        digitalWrite(pin_laser_01_green, HIGH);  
+        digitalWrite(pin_laser_01_red, HIGH);  
+        digitalWrite(pin_laser_02_green, HIGH);  
+        digitalWrite(pin_laser_02_red, HIGH);                      
+        digitalWrite(pin_alarm_light, HIGH); 
+        digitalWrite(pin_alarm_buzzer, HIGH); 
+        delay(5);
+        
+        digitalWrite(pin_blink, LOW);  
+        digitalWrite(pin_laser_01_green, LOW);  
+        digitalWrite(pin_laser_01_red, LOW);  
+        digitalWrite(pin_laser_02_green, LOW);  
+        digitalWrite(pin_laser_02_red, LOW);  
+        digitalWrite(pin_alarm_light, LOW); 
+        digitalWrite(pin_alarm_buzzer, LOW);    
+        delay(300);
+        
+        readSensors(true);        
+    }
+}
+
+int prev_DistanceInCM = -1;
+int prev_LightSensor = -1;
+int prev_TemperatureInCelsius = -1;
+boolean prev_AbsenseSensor = true;
+boolean prev_PresenseSensor = false;
+int prev_Laser1DurationInMilliseconds = 0;
+int prev_Laser2DurationInMilliseconds = 0;
+int prev_Laser1Status = 1;
+int prev_Laser2Status = 1;
+
+int DistanceInCM = -1;
+int LightSensor = -1;
+int TemperatureInCelsius = -1;
+boolean AbsenseSensor = true;
+boolean PresenseSensor = false;
+int Laser1DurationInMilliseconds = 0;
+int Laser2DurationInMilliseconds = 0;
+int Laser1Status = 1;
+int Laser2Status = 1;
+
+
+void readSensors( bool initial ){
+  if(debugMode || initial) Serial.println("----------------------------------------------");
+  if(debugMode || initial) Serial.print("MILLIS: ");
+  if(debugMode || initial) Serial.println(millis());
+  DistanceInCM = getDistance();
+  if(debugMode || initial) Serial.print("INI - DISTANCE:  ");
+  if(debugMode || initial) Serial.print(DistanceInCM);
+  if(debugMode || initial) Serial.println("cm");
+  
+  LightSensor = readLightSensor();
+  if(debugMode || initial) Serial.print("INI - LIGHT:     ");
+  if(debugMode || initial) Serial.println(LightSensor);  
+  
+  TemperatureInCelsius = readTemperatureSensor() ;
+  if(debugMode || initial) Serial.print("INI - TEMP:      ");
+  if(debugMode || initial) Serial.println(TemperatureInCelsius);  
+  
+  
+  AbsenseSensor = readAbsenceSensor()>500?true:false;
+  if(debugMode || initial) Serial.print("INI - ABSENCE:   ");
+  if(debugMode || initial) Serial.println(AbsenseSensor);  
+  
+  PresenseSensor = readPresenceSensor()>500?true:false;
+  if(debugMode || initial) Serial.print("INI - PRESENCE:  ");
+  if(debugMode || initial) Serial.println(PresenseSensor);   
+  
+  Laser1DurationInMilliseconds = getLaserDurationFiveInARow();
+  if(debugMode || initial) Serial.print("INI - LASER1 PW: ");
+  if(debugMode || initial) Serial.println(Laser1DurationInMilliseconds);   
+ 
+  Laser2DurationInMilliseconds = getLaserDurationFiveInARow_b();
+  if(debugMode || initial) Serial.print("INI - LASER2 PW: ");
+  if(debugMode || initial) Serial.println(Laser2DurationInMilliseconds);   
+  
+  Laser1Status =   Laser_DetermineStatus(Laser1DurationInMilliseconds,0);
+  if(debugMode || initial) Serial.print("INI - LASER1 ST: ");
+  if(debugMode || initial) Serial.println(Laser1Status);   
+  
+  Laser_SetStatusLEDs(0,Laser1Status);
+  
+  Laser2Status =   Laser_DetermineStatus(Laser2DurationInMilliseconds,1);
+  if(debugMode || initial) Serial.print("INI - LASER2 ST: ");
+  if(debugMode || initial) Serial.println(Laser2Status);   
+  Laser_SetStatusLEDs(1,Laser2Status);
+  
+  if(debugMode || initial) Serial.print("MILLIS: ");
+  if(debugMode || initial) Serial.println(millis());
+  
+}
+
+int SteadyBeamInitMillis[] = {0,0};
+int AbsentBeamInitMillis[] = {0,0};
+int Laser_DetermineStatus(int laserDuration, int laserIndex){
+    int currentSensorStatus =  LASER_BEAM_UNSTABLE;
     if(isLaserDurationWithinSpec(laserDuration)){   
-      absentBeamInitMillis = 0;
-      if(steadyBeamInitMillis==0) steadyBeamInitMillis = millis();
-      else if(millis()-steadyBeamInitMillis > 1000) {
-        //BEAM IS STEADY
-        currentSensorStatus =  STATUS_STEADY_BEAM;
+      AbsentBeamInitMillis[laserIndex] = 0;
+      if(SteadyBeamInitMillis[laserIndex]==0) {
+        SteadyBeamInitMillis[laserIndex] = millis();
+      } else if(millis()-SteadyBeamInitMillis[laserIndex] > 1000) {
+        currentSensorStatus =  LASER_BEAM_STEADY;
       }
-       
-    } else {
-      //BEAM IS NOT STEADY
-      steadyBeamInitMillis = 0;
-      currentSensorStatus = STATUS_UNSTABLE_BEAM;
-      if(absentBeamInitMillis==0) absentBeamInitMillis = millis();
-      else if (millis()-absentBeamInitMillis > 1000){
-        currentSensorStatus =  STATUS_ABSENT_BEAM;
+    } else { //not in spec
+      SteadyBeamInitMillis[laserIndex] = 0;
+      currentSensorStatus = LASER_BEAM_UNSTABLE;
+      if(AbsentBeamInitMillis[laserIndex]==0) {
+        AbsentBeamInitMillis[laserIndex] = millis();
+      }
+      else if (millis()-AbsentBeamInitMillis[laserIndex] > 1000){
+        currentSensorStatus =  LASER_BEAM_ABSENT;
       } 
     } 
     
     return currentSensorStatus;
 }
 
-int determineSensorStatus_b(){
-    long laserDuration;
-    
-    laserDuration = getLaserDurationFiveInARow_b();    
-    if(debugMode==1) Serial.print("Laser Duration (B): ");
-    if(debugMode==1) Serial.println(laserDuration);
-    
-    if(isLaserDurationWithinSpec(laserDuration)){   
-      absentBeamInitMillis_b = 0;
-      if(steadyBeamInitMillis_b==0) steadyBeamInitMillis_b = millis();
-      else if(millis()-steadyBeamInitMillis_b > 1000) {
-        //BEAM IS STEADY
-        currentSensorStatus_b =  STATUS_STEADY_BEAM;
-      }
-       
-    } else {
-      //BEAM IS NOT STEADY
-      steadyBeamInitMillis_b = 0;
-      currentSensorStatus_b = STATUS_UNSTABLE_BEAM;
-      if(absentBeamInitMillis_b==0) absentBeamInitMillis_b = millis();
-      else if (millis()-absentBeamInitMillis_b > 1000){
-        currentSensorStatus_b =  STATUS_ABSENT_BEAM;
-      } 
-    } 
-    
-    return currentSensorStatus_b;
+void Laser_SetStatusLEDs(int laserIndex, int laserBeamStatus){
+  
+  if(laserIndex==0){
+    switch(laserBeamStatus){
+       case LASER_BEAM_STEADY:
+           digitalWrite(pin_laser_01_red,LOW);
+           digitalWrite(pin_laser_01_green,HIGH);
+           break;
+       case LASER_BEAM_UNSTABLE:
+           digitalWrite(pin_laser_01_red,LOW);
+           digitalWrite(pin_laser_01_green,LOW);
+           break;
+       case LASER_BEAM_ABSENT:
+           digitalWrite(pin_laser_01_red,HIGH);
+           digitalWrite(pin_laser_01_green,LOW);       
+    }
+  } else {
+    switch(laserBeamStatus){
+       case LASER_BEAM_STEADY:
+           digitalWrite(pin_laser_02_red,LOW);
+           digitalWrite(pin_laser_02_green,HIGH);
+           break;
+       case LASER_BEAM_UNSTABLE:
+           digitalWrite(pin_laser_02_red,LOW);
+           digitalWrite(pin_laser_02_green,LOW);
+           break;
+       case LASER_BEAM_ABSENT:
+           digitalWrite(pin_laser_02_red,HIGH);
+           digitalWrite(pin_laser_02_green,LOW);       
+    }    
+  }
+  
 }
 
-void setSensorStatusPins(){
-    switch(currentSensorStatus){
-       case 0: //STATUS_STEADY_BEAM
-          setGreenLight_ON();
-          setRedLight_OFF();      
-          break;   
-       case 1: //STATUS_UNSTABLE_BEAM
-          setGreenLight_OFF();
-          break;          
-       case 2: //STATUS_ABSENT_BEAM
-          setRedLight_ON();
-          break;
-    }
+long millisToExitPanic = 0;
+long millisToExitWarning = 0;
+int Alarm_DetermineStatus(){
+  long currentMillis = millis();  
+  if( Laser1Status == LASER_BEAM_ABSENT && Laser2Status == LASER_BEAM_ABSENT){
+    millisToExitPanic = currentMillis + alarmDurationMillis;
+    return ALARM_STATUS_PANIC;
+  }
+  
+  if(currentMillis < millisToExitPanic) return ALARM_STATUS_PANIC;
+  millisToExitPanic = 0;
+  
+  if( Laser1Status == LASER_BEAM_UNSTABLE && Laser2Status == LASER_BEAM_UNSTABLE ){
+    millisToExitWarning = currentMillis + 0;
+    return ALARM_STATUS_WARNING;
+  }  
+  if(currentMillis < millisToExitWarning) return ALARM_STATUS_WARNING;
+  millisToExitWarning = 0;
+  
+  return ALARM_STATUS_CLEAR;
 }
 
-void setSensorStatusPins_b(){
-    switch(currentSensorStatus_b){
-       case 0: //STATUS_STEADY_BEAM
-          setGreenLight_b_ON();
-          setRedLight_b_OFF();      
-          break;   
-       case 1: //STATUS_UNSTABLE_BEAM
-          setGreenLight_b_OFF();
-          break;          
-       case 2: //STATUS_ABSENT_BEAM
-          setRedLight_b_ON();
-          break;
-    }
+void Alarm_ExecuteStatus(int alarmStatus){
+  switch(alarmStatus){
+     case ALARM_STATUS_PANIC:
+       digitalWrite(pin_alarm_buzzer,HIGH);
+       break;
+     case ALARM_STATUS_WARNING:
+       for(int i=0; i<=3; i++){
+         digitalWrite(pin_alarm_buzzer,HIGH);
+         delay(50);
+         digitalWrite(pin_alarm_buzzer,LOW);
+         delay(50);
+       }
+       break;
+     default :
+       digitalWrite(pin_alarm_buzzer,LOW);
+  }
+  
 }
+
 
 void setPinModes(){
-    pinMode(laserPin, INPUT);
-    pinMode(greenPin, OUTPUT);
-    pinMode(redPin, OUTPUT);
+    pinMode(pin_laser_01, INPUT);
+    pinMode(pin_laser_01_green, OUTPUT);
+    pinMode(pin_laser_01_red, OUTPUT);
     
-    pinMode(laserPin_b, INPUT);
-    pinMode(greenPin_b, OUTPUT);
-    pinMode(redPin_b, OUTPUT);    
+    pinMode(pin_laser_02, INPUT);
+    pinMode(pin_laser_02_green, OUTPUT);
+    pinMode(pin_laser_02_red, OUTPUT);    
     
-    pinMode(alarmLightPin, OUTPUT);    
-    pinMode(alarmSoundPin, OUTPUT);    
+    pinMode(pin_alarm_light, OUTPUT);    
+    pinMode(pin_alarm_buzzer, OUTPUT);    
     
-    pinMode(ultrasonic_trigger, OUTPUT);
-    pinMode(ultrasonic_echo, INPUT);
+    pinMode(pin_usonic_trigger, OUTPUT);
+    pinMode(pin_usonic_echo, INPUT);
     
-   digitalWrite(alarmLightPin,LOW);
-   digitalWrite(alarmSoundPin,LOW);       
+   digitalWrite(pin_alarm_light,LOW);
+   digitalWrite(pin_alarm_buzzer,LOW);       
 }
-
-String previousAlarmMode = "";
-void setAlarmMode(){
- 
-   if(currentSensorStatus ==  STATUS_ABSENT_BEAM && currentSensorStatus_b == STATUS_ABSENT_BEAM){
-       
-       Serial.println("Alarm Condition Detected!");
-       sendAlarmStatusChangeToPVCloud("ALARM");
-       
-       long alarmStopMillis = millis()+alarmMinTime/2;
-       do{
-         Serial.print("Current Millis:");
-         Serial.println(millis());
-         
-         Serial.print("Alarm Stop Millis:");
-         Serial.println(alarmStopMillis);         
-         digitalWrite(alarmLightPin,HIGH);
-         digitalWrite(alarmSoundPin,HIGH);
-         delay(200);
-         digitalWrite(alarmLightPin,LOW);
-         delay(100);
-       } while (millis()< alarmStopMillis);
-       
-       
-   } else if((currentSensorStatus ==  STATUS_UNSTABLE_BEAM || currentSensorStatus ==  STATUS_ABSENT_BEAM) && (currentSensorStatus_b ==  STATUS_UNSTABLE_BEAM || currentSensorStatus_b ==  STATUS_ABSENT_BEAM) ){
-      
-       sendAlarmStatusChangeToPVCloud("WARNING");  
-       
-       digitalWrite(alarmLightPin,HIGH);
-       digitalWrite(alarmSoundPin,HIGH);
-       delay(50);
-       digitalWrite(alarmSoundPin,LOW);
-       
-   } else {
-
-       sendAlarmStatusChangeToPVCloud("STABLE"); 
-       digitalWrite(alarmLightPin,LOW);
-       digitalWrite(alarmSoundPin,LOW);     
-   }
-}
-void initSignal(){
-    for (int i=1; i<4; i++){
-        if(debugMode==1) { Serial.print("Init Signal Count: ");}
-        if(debugMode==1) Serial.println(i);
-        digitalWrite(greenPin, HIGH);  
-        digitalWrite(blinkPin, HIGH);  
-        digitalWrite(redPin, HIGH);  
-        digitalWrite(greenPin_b, HIGH);  
-        digitalWrite(blinkPin, HIGH);  
-        digitalWrite(redPin_b, HIGH);          
-        delay(1000);
-        
-        digitalWrite(greenPin, LOW);
-        digitalWrite(blinkPin, LOW);  
-        digitalWrite(redPin, LOW);     
-   
-        digitalWrite(greenPin_b, LOW);
-        digitalWrite(blinkPin, LOW);  
-        digitalWrite(redPin_b, LOW);       
-        delay(1000);
-    }
-}
-
 
 long getDistance(){
   
     long pulseDuration;
     long distanceInCM = -1;
     
-    //TRIGGER:
-    digitalWrite(ultrasonic_trigger, LOW);
+    digitalWrite(pin_usonic_trigger, LOW);
     delayMicroseconds(2);
-    digitalWrite(ultrasonic_trigger, HIGH);
+    digitalWrite(pin_usonic_trigger, HIGH);
     delayMicroseconds(10);
-    digitalWrite(ultrasonic_trigger, LOW);
+    digitalWrite(pin_usonic_trigger, LOW);
     
-    pulseDuration = pulseIn(ultrasonic_echo, HIGH);
+    pulseDuration = pulseIn(pin_usonic_echo, HIGH);
     
     distanceInCM = (pulseDuration/2)/29.1;
     
-    Serial.print("Distance Measured: ");
-    Serial.print(distanceInCM);
-    Serial.println("cm. ");
     return distanceInCM;
-  
-  return distanceInCM;
 }
 
 
@@ -324,7 +367,7 @@ long getLaserDurationFiveInARow(){
     
     for(int i=0; i<10; i++){
        readings_Count ++;
-       laserDuration = pulseIn(laserPin, LOW, 5000);
+       laserDuration = pulseIn(pin_laser_01, LOW, 5000);
        
        if(isLaserDurationWithinSpec(laserDuration)) {
          laserDurationInSpec_Count ++; 
@@ -332,7 +375,7 @@ long getLaserDurationFiveInARow(){
          measuredDuration = laserDuration;
        }
        
-       if(debugMode==1) {
+       if(debugMode) {
          Serial.print("Laser Duration # ");
          Serial.print(i);Serial.print(": ");
          Serial.println(laserDuration);
@@ -341,25 +384,26 @@ long getLaserDurationFiveInARow(){
     }
     
  
-     if(debugMode==1) {Serial.print("Measured Duration: "); Serial.println(measuredDuration); } 
+     if(debugMode) {Serial.print("Measured Duration: "); Serial.println(measuredDuration); } 
    
      if(readings_Count==1000) {
          Serial.println("--------------------------------------------------");
          Serial.println("--------------------------------------------------");
-         Serial.println("--------------------------------------------------");
-         Serial.print("----- AVERAGE SAMPLES IN SPEC: ");
+         
+         Serial.print("----- AVERAGE SAMPLES IN SPEC (A): ");
          Serial.print(readingsInSpec_Count);
          Serial.print(" OF ");
-         Serial.print(readings_Count);
+         Serial.println(readings_Count);
+         Serial.println("--------------------------------------------------");
          readings_Count=0;
          readingsInSpec_Count=0;
      }
      
      if(laserDurationInSpec_Count >= 3) {
-        if(debugMode==1) Serial.println("Returned MD");
+        if(debugMode) Serial.println("Returned MD");
         return measuredDuration;
     } else {
-        if(debugMode==1) Serial.println("Returned 0");
+        if(debugMode) Serial.println("Returned 0");
         return 0;
     }
 }
@@ -372,7 +416,7 @@ long getLaserDurationFiveInARow_b(){
     
     for(int i=0; i<10; i++){
        readings_Count_b ++;
-       laserDuration = pulseIn(laserPin_b, LOW, 5000);
+       laserDuration = pulseIn(pin_laser_02, LOW, 5000);
        
        if(isLaserDurationWithinSpec(laserDuration)) {
          laserDurationInSpec_Count ++; 
@@ -380,7 +424,7 @@ long getLaserDurationFiveInARow_b(){
          measuredDuration = laserDuration;
        }
        
-       if(debugMode==1) {
+       if(debugMode) {
          Serial.print("Laser Duration # ");
          Serial.print(i);Serial.print(": ");
          Serial.println(laserDuration);
@@ -389,60 +433,30 @@ long getLaserDurationFiveInARow_b(){
     }
     
  
-     if(debugMode==1) {Serial.print("Measured Duration: "); Serial.println(measuredDuration); } 
+     if(debugMode) {Serial.print("Measured Duration: "); Serial.println(measuredDuration); } 
    
      if(readings_Count_b==1000) {
          Serial.println("--------------------------------------------------");
          Serial.println("--------------------------------------------------");
-         Serial.println("--------------------------------------------------");
-         Serial.print("----- AVERAGE SAMPLES IN SPEC: ");
+
+         Serial.print("----- AVERAGE SAMPLES IN SPEC (B): ");
          Serial.print(readingsInSpec_Count_b);
          Serial.print(" OF ");
-         Serial.print(readings_Count_b);
+         Serial.println(readings_Count_b);
+         Serial.println("--------------------------------------------------");         
          readings_Count_b=0;
          readingsInSpec_Count_b=0;
      }
      
      if(laserDurationInSpec_Count >= 3) {
-        if(debugMode==1) Serial.println("Returned MD");
+        if(debugMode) Serial.println("Returned MD");
         return measuredDuration;
     } else {
-        if(debugMode==1) Serial.println("Returned 0");
+        if(debugMode) Serial.println("Returned 0");
         return 0;
     }
 }
 
-void setGreenLight_ON(){
-    digitalWrite(greenPin, HIGH);  
-}
-
-void setGreenLight_OFF(){
-    digitalWrite(greenPin, LOW);  
-}
-
-void setRedLight_ON(){
-    digitalWrite(redPin, HIGH);
-}
-
-void setRedLight_OFF(){
-    digitalWrite(redPin, LOW);  
-}
-
-void setGreenLight_b_ON(){
-    digitalWrite(greenPin_b, HIGH);  
-}
-
-void setGreenLight_b_OFF(){
-    digitalWrite(greenPin_b, LOW);  
-}
-
-void setRedLight_b_ON(){
-    digitalWrite(redPin_b, HIGH);
-}
-
-void setRedLight_b_OFF(){
-    digitalWrite(redPin_b, LOW);  
-}
 
 
 boolean isLaserDurationWithinSpec(long duration){
@@ -450,17 +464,16 @@ boolean isLaserDurationWithinSpec(long duration){
 }
 
 
-void sendDataToPVCloud(String label, String value){
-  String pvcloudCommand = "node /home/root/pvcloud_api.js action='add_value' value='" + value + "' value_type='JSON_TH' value_label='" + label + "' captured_datetime='2015-03-09+21:00' >> pvcloud_log.txt &";
-  system ( pvcloudCommand.buffer );
+void sendDataToPVCloud(String label, String value, boolean waitForResponse){
+  if(waitForResponse){
+    String pvcloudCommand = "node /home/root/pvcloud_api.js action='add_value' value='" + value + "' value_type='JSON_TH' value_label='" + label + "' captured_datetime='2015-03-09+21:00' >> pvcloud_log.txt";
+    system ( pvcloudCommand.buffer );
+  } else {
+    String pvcloudCommand = "node /home/root/pvcloud_api.js action='add_value' value='" + value + "' value_type='JSON_TH' value_label='" + label + "' captured_datetime='2015-03-09+21:00' >> pvcloud_log.txt &";
+    system ( pvcloudCommand.buffer );
+  }
 }
 
-void sendAlarmStatusChangeToPVCloud(String newAlarmStatus){
-     if(previousAlarmMode!=newAlarmStatus){
-       previousAlarmMode = newAlarmStatus;
-       sendDataToPVCloud("LSM ALARM MODE:",newAlarmStatus);
-     }  
-}
 
 String getPin13CommandFromPVCloud(){
   String pvcloudCommand = "node /home/root/pvcloud_api.js action='get_last_value_simple' value_label='PIN_13_STATUS' captured_datetime='2015-03-09+21:00' > pvcloud_pin13_command.txt";
@@ -482,20 +495,14 @@ String readFileValue(){
 }
 
 int readLightSensor(){
-   int result = analogRead( lightSensorPin );
-   Serial.print ("Light Sensor: ");
-   Serial.println(result);
-   return result;
+   return analogRead( pin_photocell );
 }
 
 double readTemperatureSensor(){
-   int result = analogRead( tempSensor );
-   Serial.print ("Temp Sensor: ");
-   Serial.println(result);
-   return Thermistor(1024-result);
-    
+   int result = analogRead( pin_temperature );
+   return convertToCM(1024-result);    
 }
-double Thermistor (int RawADC) {
+double convertToCM (int RawADC) {
   double Temp;
   Temp = log (((10240000/RawADC) - 10000));
   Temp = 1 / (0.001129148 + (0.000234125 + (0.0000000876741 * Temp * Temp)) * Temp);
@@ -503,16 +510,10 @@ double Thermistor (int RawADC) {
   return Temp;
 }
 
-double readAvoidSensor(){
-   int result = analogRead( avoidanceSensor );
-   Serial.print ("AVOID  Sensor: ");
-   Serial.println(result);
-   return result;  
+double readAbsenceSensor(){
+   return analogRead( pin_absence );
 }
 
-double readAvoidSensor2(){
-   int result = analogRead( avoidanceSensor2 );
-   Serial.print ("AVOID  Sensor 2: ");
-   Serial.println(result);
-   return result;  
+double readPresenceSensor(){
+   return analogRead( pin_presence );
 }
