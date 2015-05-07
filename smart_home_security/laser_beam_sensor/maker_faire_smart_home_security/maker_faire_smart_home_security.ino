@@ -175,97 +175,120 @@ void setup() {
     if(debugMode) Serial.println("Setup Complete!");
 }
 
+/*-------------------------------------------------------------------*/
+/*                         LOOP FUNCTION GLOBALS                     */
+/*-------------------------------------------------------------------*/
 boolean isFirstLoop = true;
 int alarmStatus_PREV = -1;
-String previousFrontDoorStatus = "";
+String currentFrontDoorStatus="H";
+long frontDoorStatus_diffLastDetectedMillis = 0;
 long lastPVCloudUpdateMillis = 0;
-void loop(){
-  if(isFirstLoop) {
-    Serial.println("INITIAL LOOP BEGIN");
-    String jsonvalue = buildPVCloudValue("S", "H","H", "C", "H","H","H");
-    sendDataToPVCloud("HOUSE_STATUS",jsonvalue, false);
-    
-    //isFirstLoop flag is cleared out at the end of the loop() function... not here.
-  }
-   
-  readSensors(false); 
-  int alarmStatus = Alarm_DetermineStatus();
 
-  String jsonvalue = "";
+/*-------------------------------------------------------------------*/
+/*                         LOOP FUNCTION                             */
+/*-------------------------------------------------------------------*/
+void loop(){
+  if(isFirstLoop) processInitialLoop();
+  
+  readSensors(false); 
   
   String laserStatus = (Laser1Status == LASER_BEAM_ABSENT && Laser2Status == LASER_BEAM_ABSENT)?"A":"S";
   String z1Status = AbsenseSensor==false?"L":"H"; 
   String z2Status = PresenseSensor?"L":"H";
-  String houseStatus = "";
+  String houseStatus = "C";
   String frontDoorStatus = DistanceInCM < 70?"L":"H";     
   String lightStatus = LightSensor > 500? "L": "H";
   String temperatureStatus = TemperatureInCelsius > 30? "L": "H";
   
-  
-  
-   
-  if (alarmStatus != alarmStatus_PREV && alarmStatus_PREV!=-1){
-    Serial.println("ALARM STATUS CHANGED!");
-    alarmStatus_PREV = alarmStatus;
-
+  int alarmStatus = determineAlarmStatus();
     
-    switch(alarmStatus){
-      case ALARM_STATUS_CLEAR:
-        Serial.println("ALARM STATUS: CLEAR");
-        houseStatus="C";
-        jsonvalue = buildPVCloudValue(laserStatus, z1Status,z2Status, houseStatus, frontDoorStatus, temperatureStatus, lightStatus);
-        sendDataToPVCloud("HOUSE_STATUS",jsonvalue, false);
-        lastPVCloudUpdateMillis = millis();
-        break;
-      case ALARM_STATUS_WARNING:
-        Serial.println("ALARM STATUS: WARNING!");
-        break;
-      case ALARM_STATUS_PANIC:
-        Serial.println("ALARM STATUS: PANIC!!!!!");
-        houseStatus="U";
-        jsonvalue = buildPVCloudValue(laserStatus, z1Status,z2Status, houseStatus, frontDoorStatus, temperatureStatus, lightStatus);
-        sendDataToPVCloud("HOUSE_STATUS",jsonvalue, false);
-        lastPVCloudUpdateMillis = millis();
-        break;
-    }  
-  } else if ( alarmStatus_PREV == -1 ) {//Home109080363
-    alarmStatus_PREV = alarmStatus;
+  processAlarmStatusOnPVCloud(alarmStatus, laserStatus, z1Status, z2Status, houseStatus, frontDoorStatus, temperatureStatus, lightStatus);
     
-  }
+  executeAlarmStatus(alarmStatus);  
   
-  Alarm_ExecuteStatus(alarmStatus);  
+  currentDoorStatusCheckpoint(laserStatus, z1Status, z2Status, houseStatus, frontDoorStatus, temperatureStatus, lightStatus);
   
-  
-  
-  if(previousFrontDoorStatus == ""){
-     Serial.print("INITIALIZING FRONTDOOR PREV: ");
-     Serial.println(frontDoorStatus);
-     previousFrontDoorStatus = frontDoorStatus;
-  } else if (frontDoorStatus != previousFrontDoorStatus && millis()-lastPVCloudUpdateMillis >5000){
-    if(frontDoorStatus=="L") tune();
-     Serial.print("CHANGE ON FRONTDOOR: ");
-     Serial.println(frontDoorStatus);
-     
-     previousFrontDoorStatus = frontDoorStatus;
-     jsonvalue = buildPVCloudValue(laserStatus, z1Status,z2Status, houseStatus, frontDoorStatus, temperatureStatus, lightStatus);
-     sendDataToPVCloud("HOUSE_STATUS",jsonvalue, false);
-     lastPVCloudUpdateMillis = millis();
-  }
-  
-  if(millis() - lastPVCloudUpdateMillis > 60000){
-     jsonvalue = buildPVCloudValue(laserStatus, z1Status,z2Status, houseStatus, frontDoorStatus, temperatureStatus, lightStatus);
-     sendDataToPVCloud("HOUSE_STATUS",jsonvalue, false);   
-     lastPVCloudUpdateMillis = millis(); 
-  }
- 
+  minuteCheckpoint(laserStatus, z1Status, z2Status, houseStatus, frontDoorStatus, temperatureStatus, lightStatus);
   
   if(isFirstLoop){
-    Serial.println("INITIAL LOOP END");
-    isFirstLoop = false;
+    clearInitialLoopCondition();
   }  
 }
 
+void clearInitialLoopCondition(){
+    Serial.println("INITIAL LOOP END");
+    isFirstLoop = false;
+}
+void processInitialLoop(){
+    Serial.println("INITIAL LOOP BEGIN");
+    String jsonvalue = buildPVCloudValue("S", "H","H", "C", "H","H","H");
+    sendDataToPVCloud("HOUSE_STATUS",jsonvalue, false);
+}
 
+void processAlarmStatusOnPVCloud(int alarmStatus, String laserStatus, String z1Status, String z2Status, String houseStatus, String frontDoorStatus, String temperatureStatus, String lightStatus){
+   String jsonvalue = "";
+   if (alarmStatus != alarmStatus_PREV && alarmStatus_PREV!=-1){
+      Serial.println("ALARM STATUS CHANGED!");
+      alarmStatus_PREV = alarmStatus;
+  
+      
+      switch(alarmStatus){
+        case ALARM_STATUS_CLEAR:
+          Serial.println("ALARM STATUS: CLEAR");
+          houseStatus="C";
+          jsonvalue = buildPVCloudValue(laserStatus, z1Status,z2Status, houseStatus, frontDoorStatus, temperatureStatus, lightStatus);
+          sendDataToPVCloud("HOUSE_STATUS",jsonvalue, false);
+          lastPVCloudUpdateMillis = millis();
+          break;
+        case ALARM_STATUS_WARNING:
+          Serial.println("ALARM STATUS: WARNING!");
+          break;
+        case ALARM_STATUS_PANIC:
+          Serial.println("ALARM STATUS: PANIC!!!!!");
+          houseStatus="U";
+          jsonvalue = buildPVCloudValue(laserStatus, z1Status,z2Status, houseStatus, frontDoorStatus, temperatureStatus, lightStatus);
+          sendDataToPVCloud("HOUSE_STATUS",jsonvalue, false);
+          lastPVCloudUpdateMillis = millis();
+          break;
+      }  
+    } else if ( alarmStatus_PREV == -1 ) {//Home109080363
+      alarmStatus_PREV = alarmStatus;
+      
+    }
+}
+
+void currentDoorStatusCheckpoint(String laserStatus, String z1Status, String z2Status, String houseStatus, String frontDoorStatus, String temperatureStatus, String lightStatus){
+  String jsonvalue = "";
+  if(currentFrontDoorStatus == ""){
+     Serial.print("INITIALIZING FRONTDOOR PREV: ");
+     Serial.println(frontDoorStatus);
+     currentFrontDoorStatus = frontDoorStatus;
+  } else if (frontDoorStatus != currentFrontDoorStatus){
+    if((frontDoorStatus=="L" && frontDoorStatus_diffLastDetectedMillis!=0 && millis() - frontDoorStatus_diffLastDetectedMillis > 300)||(frontDoorStatus=="H" && frontDoorStatus_diffLastDetectedMillis!=0 && millis() - frontDoorStatus_diffLastDetectedMillis > 10000)){
+       if(frontDoorStatus=="L") tune();
+       Serial.print("CHANGE ON FRONTDOOR: ");
+       Serial.println(frontDoorStatus);
+       
+       currentFrontDoorStatus = frontDoorStatus;
+       jsonvalue = buildPVCloudValue(laserStatus, z1Status,z2Status, houseStatus, currentFrontDoorStatus, temperatureStatus, lightStatus);
+       sendDataToPVCloud("HOUSE_STATUS",jsonvalue, false);
+       lastPVCloudUpdateMillis = millis();      
+    } else if (frontDoorStatus_diffLastDetectedMillis==0) {
+      frontDoorStatus_diffLastDetectedMillis = millis();
+    }
+  } else { //NOT DIFFERENT STATUS
+       frontDoorStatus_diffLastDetectedMillis = millis();
+  }  
+}
+
+void minuteCheckpoint(String laserStatus, String z1Status, String z2Status, String houseStatus, String frontDoorStatus, String temperatureStatus, String lightStatus){
+  
+  if(millis() - lastPVCloudUpdateMillis > 60000){
+     String jsonvalue = buildPVCloudValue(laserStatus, z1Status,z2Status, houseStatus, frontDoorStatus, temperatureStatus, lightStatus);
+     sendDataToPVCloud("HOUSE_STATUS",jsonvalue, false);   
+     lastPVCloudUpdateMillis = millis(); 
+  }
+}
 
 void initSignal(){
     if(debugMode) {Serial.println("Init Signal Begins...");}
@@ -408,7 +431,7 @@ void Laser_SetStatusLEDs(int laserIndex, int laserBeamStatus){
 
 long millisToExitPanic = 0;
 long millisToExitWarning = 0;
-int Alarm_DetermineStatus(){
+int determineAlarmStatus(){
   long currentMillis = millis();  
   if( (Laser1Status == LASER_BEAM_ABSENT && Laser2Status == LASER_BEAM_ABSENT) || !AbsenseSensor || PresenseSensor) {
     millisToExitPanic = currentMillis + alarmDurationMillis;
@@ -428,7 +451,7 @@ int Alarm_DetermineStatus(){
   return ALARM_STATUS_CLEAR;
 }
 
-void Alarm_ExecuteStatus(int alarmStatus){
+void executeAlarmStatus(int alarmStatus){
   switch(alarmStatus){
      case ALARM_STATUS_PANIC:
        digitalWrite(pin_alarm_buzzer,HIGH);
