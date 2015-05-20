@@ -201,7 +201,7 @@ void loop(){
   String temperatureStatus = TemperatureInCelsius > 30? "L": "H";
   
   int alarmStatus = determineAlarmStatus();
-    
+
   processAlarmStatusOnPVCloud(alarmStatus, laserStatus, z1Status, z2Status, houseStatus, frontDoorStatus, temperatureStatus, lightStatus);
     
   executeAlarmStatus(alarmStatus);  
@@ -336,11 +336,11 @@ void readSensors( bool initial ){
   if(debugMode || initial) Serial.println(TemperatureInCelsius);  
   
   
-  AbsenseSensor = readAbsenceSensor()>500?true:false;
+  AbsenseSensor = true;
   if(debugMode || initial) Serial.print("INI - ABSENCE:   ");
   if(debugMode || initial) Serial.println(AbsenseSensor);  
   
-  PresenseSensor = readPresenceSensor()>500?true:false;
+  PresenseSensor = false;//readPresenceSensor()>500?true:false;
   if(debugMode || initial) Serial.print("INI - PRESENCE:  ");
   if(debugMode || initial) Serial.println(PresenseSensor);   
   
@@ -434,6 +434,7 @@ long millisToExitWarning = 0;
 int determineAlarmStatus(){
   long currentMillis = millis();  
   if( (Laser1Status == LASER_BEAM_ABSENT && Laser2Status == LASER_BEAM_ABSENT) || !AbsenseSensor || PresenseSensor) {
+    Serial.println("ALARM!");
     millisToExitPanic = currentMillis + alarmDurationMillis;
     return ALARM_STATUS_PANIC;
   }

@@ -1,0 +1,47 @@
+
+
+/* ==========================================================================
+   Author's custom styles
+   ========================================================================== */
+
+a.btn{
+    min-width: 180px;
+    margin:0 auto;
+
+
+}
+
+#btnStop {
+    display:none;
+}
+
+@media (max-width: 768px) {
+    h2{
+    }
+    .config-label{
+        display:none;
+    }
+    a.btn{
+        display:block;
+        max-width:180px        
+    }   
+
+}
+
+@media (max-width: 480px) {
+    h2,.explanation{
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
