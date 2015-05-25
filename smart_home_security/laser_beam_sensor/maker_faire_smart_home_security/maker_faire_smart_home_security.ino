@@ -336,13 +336,13 @@ void readSensors( bool initial ){
   if(debugMode || initial) Serial.println(TemperatureInCelsius);  
   
   
-  AbsenseSensor = true;
+  AbsenseSensor = readAbsenceSensor()>500?true:false;
   if(debugMode || initial) Serial.print("INI - ABSENCE:   ");
   if(debugMode || initial) Serial.println(AbsenseSensor);  
   
-  PresenseSensor = false;//readPresenceSensor()>500?true:false;
+  PresenseSensor = readPresenceSensor()>500?true:false;
   if(debugMode || initial) Serial.print("INI - PRESENCE:  ");
-  if(debugMode || initial) Serial.println(PresenseSensor);   
+  if(debugMode || initial) Serial.println(PresenseSensor);    
   
   Laser1DurationInMilliseconds = getLaserDurationFiveInARow();
   if(debugMode || initial) Serial.print("INI - LASER1 PW: ");
