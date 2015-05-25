@@ -335,7 +335,8 @@ void readSensors( bool initial ){
   if(debugMode || initial) Serial.print("INI - TEMP:      ");
   if(debugMode || initial) Serial.println(TemperatureInCelsius);  
   
-  
+  /** REENABLED IR PROXIMITY SENSORS HERE **/
+
   AbsenseSensor = readAbsenceSensor()>500?true:false;
   if(debugMode || initial) Serial.print("INI - ABSENCE:   ");
   if(debugMode || initial) Serial.println(AbsenseSensor);  
@@ -343,6 +344,8 @@ void readSensors( bool initial ){
   PresenseSensor = readPresenceSensor()>500?true:false;
   if(debugMode || initial) Serial.print("INI - PRESENCE:  ");
   if(debugMode || initial) Serial.println(PresenseSensor);    
+
+   /** REENABLED IR PROXIMITY SENSORS ABOVE **/
   
   Laser1DurationInMilliseconds = getLaserDurationFiveInARow();
   if(debugMode || initial) Serial.print("INI - LASER1 PW: ");
